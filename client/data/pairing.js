@@ -1,35 +1,39 @@
 const textBox = document.getElementById("code-input");
 const button = document.getElementById("pair-button");
+const pairingError = "Error";
 
 const socket = io("http://localhost:1010");
 
-socket.on("connect", () => {  // enable button upon connection
+socket.on("connect", id => {  // enable button upon obtaining id
     button.disabled = false;
 });
 
-let expect_get_code_response = 0;
+socket.on("disconnect", () => socket.id = null);
+
+let expectedRequestId = 0;
 
 function buttonClick () {
-    self.port.emit("pair-with", textBox.value);
-    expect_get_code_response++;
     if (textBox.value.length === 0) {
-        return socket.emit("pairCode::request", expect_get_code_response);
+        expectedRequestId++;
+        return socket.emit("pairCode::request", expectedRequestId);
     }
-    socket.emit("pairing::request", expect_get_code_response);
+    socket.emit("pairing::request", textBox.value, expectedRequestId);
 }
 button.onclick = buttonClick;
-socket.on("pairCode::response", (code, reponse_id) => {
+socket.on("pairCode::response", (code, requestId) => {
     // response of "get-code"
-    if (reponse_id === "duplicate") {
+    if (requestId === pairingError) {
         // show dup ui
     }
-    if (reponse_id === expect_get_code_response) {
+    if (requestId === expectedRequestId) {
         textBox.value = code;
     }
 });
 
-// self.port.on("pair-success",);  // display success, main will close planel in while
-// self.port.on("pair-failed",);  // highlight text box
+self.port.on("sendLink", urlToSend =>
+    socket.emit("shareLink::toPartner", urlToSend));
+
+socket.on("shareLink::fromPartner", newUrl => self.port.emit("newUrl", newUrl));
 
 /*
 read x-notifier for right click and css number thing
