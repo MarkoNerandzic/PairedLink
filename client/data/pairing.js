@@ -1,6 +1,7 @@
 const textBox = document.getElementById("code-input");
 const button = document.getElementById("pair-button");
 const pairingError = "Error";
+const textBoxPlaceHolder = "Pairing with...";
 const buttonState = (() => {
     let pairButtonClass = "btn btn-success";
     let requestButtonClass = "btn btn-primary";
@@ -36,8 +37,6 @@ const buttonState = (() => {
     };
 })();
 
-const textBoxPlaceHolder = "Pairing with...";
-
 textBox.addEventListener("input", event => {
     if (textBox.value.length !== 0) {
         buttonState.pair();
@@ -46,6 +45,11 @@ textBox.addEventListener("input", event => {
     }
 }, true);
 
+function resetInputs () {
+    textBox.placeholder = textBoxPlaceHolder;
+    textBox.disabled = false;
+    button.disabled = false;
+}
 
 const socket = io("http://10.20.94.222:3000");
 
@@ -53,7 +57,10 @@ socket.on("connect", () => {  // enable button upon obtaining id
     button.disabled = false;
 });
 
-socket.on("disconnect", () => textBox.placeholder = textBoxPlaceHolder);
+socket.on("disconnect", () => {
+    resetInputs();
+    self.port.emit("unpaired");
+});
 
 let expectedRequestId = 0;
 
@@ -82,11 +89,17 @@ socket.on("pairCode::response", (code, requestId) => {
     }
 });
 
+socket.on("pairing::partnerJoined", () => {
+    resetInputs();
+    self.port.emit("paired");
+});
+
 self.port.on("sendLink", urlToSend =>
     socket.emit("shareLink::toPartner", urlToSend));
 
-socket.on("shareLink::fromPartner", newUrl => self.port.emit("newUrl", newUrl));
+socket.on("shareLink::fromPartner", url => self.port.emit("notify", url));
 
 /*
-read x-notifier for right click and css number thing
+two buttons, one for sending link, one for recieving.
+Recieving one has the pairing code and the links
 */
