@@ -1,6 +1,7 @@
 var app = require('express')();
 var http = require('http').Server(app);
 var io = require('socket.io')(http);
+var when = require('when');
 var mongoose = require('mongoose');
 var Schema = mongoose.Schema;
 
@@ -13,7 +14,7 @@ var PairingSchema = new Schema({
 
 var PairingModel = mongoose.model('PairingSchema', PairingSchema);
 
-mongoose.connect("mongodb://localhost/");
+mongoose.connect("mongodb://localhost/PairedLinkData");
 
 app.get('/', function(req, res){
 	res.send("<p>Hi</p>");
@@ -33,24 +34,25 @@ io.on("connection", function(socket){
 			sendClosePairingMessageToPartner(socket.id, socket.pairingCode);
 			closePairing(socket.pairingCode);
 		}
-		var newPairing = createNewPairing(socket.id);
-		if (newPairing != -1) {
-			socket.pairingCode = newPairing;
-			socket.emit("pairCode::reponse", newPairing, requestId);
-		} else {
-			console.log("Error creating new pairing!");
-			socket.emit("pairCode::response", "", pairingError)
-		}
+		createNewPairing(socket.id).then(function (newPairing){
+			if (newPairing != -1) {
+				socket.pairingCode = newPairing;
+				socket.emit("pairCode::reponse", newPairing, requestId);
+			} else {
+				console.log("Error creating new pairing!");
+				socket.emit("pairCode::response", "", pairingError);
+			}	
+		}, function(){});
 	});
 
 	socket.on("shareLink::toPartner", function(sendUrl, requestId){
 		var partnerId = getPartnerId(socket.id, socket.pairingCode);
-		if (partnerId != -1) {
+		if (partnerId !== -1) {
 			var partnerSocket = getPartnerSocket(partnerId);
-			if (partnerSocket != null) {
+			if (partnerSocket !== null) {
 				partnerSocket.emit("shareLink::fromPartner", sendUrl);
 			} else {
-				console.log("Error sending url, found partnerId: " + partnerId + " but partner socket doesn't exist!")
+				console.log("Error sending url, found partnerId: " + partnerId + " but partner socket doesn't exist!");
 			}
 		} else {
 			console.log("Error sending url, couldn't find partnerId with pairing: " + socket.pairingCode + " and sender id: " + socket.id);
@@ -59,8 +61,7 @@ io.on("connection", function(socket){
 
 	socket.on("pairing::request", function(pairingCode, requestId){
 		if (pairingExists(pairingCode)) {
-			var successfulSocketAddition = addSocketIdToPairing(socket.id, pairingCode);
-			if (successfulSocketAddition) {
+			addSocketIdToPairing(socket.id, pairingCode).then(function (succesfulAddition){
 				socket.emit("pairing::success", requestId);
 				var partnerId = getPartnerId(socket.id, socket.pairingCode);
 				if (partnerId != -1) {
@@ -74,7 +75,7 @@ io.on("connection", function(socket){
 			} else {
 				console.log("Error adding user to pairing!");
 				socket.emit("pairing::failure", requestId);
-			}
+			});
 		} else {
 			console.log("Error adding user to pairing, pairing code: " + socket.pairingCode + " not found");
 			socket.emit("pairing::failure", requestId);
@@ -82,25 +83,28 @@ io.on("connection", function(socket){
 	});
 
 	socket.on("disconnect", function(){
-		sendClosePairingMessageToPartner(socket.id, socket.pairingCode);
-		closePairing(socket.pairingCode);
+		if(socket.pairing !== "" && pairingExists(socket.pairing)){
+			sendClosePairingMessageToPartner(socket.id, socket.pairingCode);
+			closePairing(socket.pairingCode);
+		}
 	});
 });
 
 function pairingExists(pairing){
-	var pairingInfo = null;
-	PairingModel.findOne({'pairingCode': pairing}, function(err, tempPairingInfo){
-		if (err) {
-			console.log("Error when attempting to search up pairing: " + pairing);
-		} else {
-			pairingInfo = tempPairingInfo;
-		}
-	});
-	if (tempPairingInfo != null) {
-		return true;
-	} else {
-		return false;
-	}
+	return when.promise(function(resolve, reject, notify){
+		PairingModel.findOne({'pairingCode': pairing}, function(err, tempPairingInfo){
+			if (err) {
+				console.log("Error when attempting to search up pairing: " + pairing);
+				reject(err);
+			} else {
+				if (tempPairingInfo !== null) {
+					resolve(true);
+				} else {
+					resolve(false);
+				}
+			}
+		});
+	})
 }
 
 function sendClosePairingMessageToPartner(socketId, pairing){
@@ -153,23 +157,32 @@ function closePairing(pairing){
 
 function createNewPairing(socketId){
 	var newPairing = generateNewPairing();
-	var insertPairingSuccessful = insertNewPairing(newPairing);
-	if (insertPairingSuccessful) {
-		var successfulSocketAddition = addSocketIdToPairing(socketId, newPairing);
-		if (successfulSocketAddition) {
-			return newPairing;
+	var insertPairingSuccessful = false;
+	return insertNewPairing(newPairing).then(function(succesfulInsertion){
+		insertPairingSuccessful = successfulInsertion;
+		console.log(insertPairingSuccessful);
+		if (insertPairingSuccessful) {
+			var successfulSocketAddition = addSocketIdToPairing(socketId, newPairing);
+			if (successfulSocketAddition) {
+				return newPairing;
+			} else {
+				console.log("Error adding a new socket to the pairing");
+				return -1;
+			}
 		} else {
+			console.log("Error inserting a new pairing");
 			return -1;
 		}
-	} else {
-		return -1;
-	}
+	}, function(err){
+		console.log("We failed =( . Here's the error: " + err);
+	});
 }
 
 function generateNewPairing(){
 	var newPairing = 0;
 	for(var counter = 0; counter < 5; counter++){
-		newPairing += Math.round(Math.random*10);
+		var randomNumber = Math.round(Math.random()*10);
+		newPairing += randomNumber;
 		newPairing = newPairing*10;
 	}
 	newPairing = newPairing/10;
@@ -187,29 +200,44 @@ function insertNewPairing (pairing) {
 	} else {
 		var successfulInsertion = false;
 		var pairingInfo = new PairingModel();
-		pairing.pairingCode = pairing;
-		pairing.members = [];
-		pairing.save( function(err) {
-			if(err){
-				console.log("Error creating a pairing: " + pairing + " with error: " + err);
-			} else {
-				successfulInsertion = true;
-			}
+		pairingInfo.pairingCode = pairing;
+		pairingInfo.members = [];
+		
+		return when.promise(function(resolve, reject, notify){
+			pairingInfo.save( function(err) {
+				if(err){
+					console.log("Error creating a pairing: " + pairing + " with error: " + err);
+					reject(err);
+				} else {
+					console.log("...Yeah, we totally didn't break .... btw err is: " + err);
+					successfulInsertion = true;
+					console.log(successfulInsertion);
+				}
+				resolve(successfulInsertion);
+			});
 		});
-		return successfulInsertion;
 	}
 }
 
 function addSocketIdToPairing (socketId, newPairing) {
-	PairingModel.findOne({'pairingCode': pairing}, function(err, tempPairingInfo){
-		if (err) {
-			console.log("Error when attempting to search up pairing: " + pairing);
-		} else {
-			pairingInfo = tempPairingInfo;
-			newPairingInfo = PairingModel();
-			newPairingInfo.pairingCode = tempPairingInfo.pairingCode;
-			newPairingInfo.members = tempPairingInfo.members.push(socketId);
-			PairingModel.findOneAndUpdate({'pairingCode': tempPairingInfo.pairingCode}, newPairingInfo);
-		}
-	});
+	return when.promise(function(resolve, reject, notify){
+		PairingModel.findOne({'pairingCode': pairing}, function(err, tempPairingInfo){
+			if (err) {
+				console.log("Error when attempting to search up pairing: " + pairing + " with error: " + err);
+				reject(err);
+			} else {
+				pairingInfo = tempPairingInfo;
+				newPairingInfo = PairingModel();
+				newPairingInfo.pairingCode = tempPairingInfo.pairingCode;
+				newPairingInfo.members = tempPairingInfo.members.push(socketId);
+				PairingModel.findOneAndUpdate({'pairingCode': tempPairingInfo.pairingCode}, newPairingInfo, function(err){
+					if(err){
+						console.log("Error updating pairing to add socket id: " + err);
+						reject(err);
+					}
+					resolve();
+				});
+			}
+		});
+	})
 }
