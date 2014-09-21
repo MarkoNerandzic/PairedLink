@@ -1,0 +1,8 @@
+{
+  "name": "paired-link-server",
+  "version": "0.0.1",
+  "description": "Server code for Paired Link",
+  "dependencies": {
+    "socket.io": "^1.1.0"
+  }
+}
