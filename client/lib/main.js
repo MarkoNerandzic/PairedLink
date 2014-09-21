@@ -3,16 +3,15 @@ const { data } = require("sdk/self");
 const { ToggleButton } = require("sdk/ui/button/toggle");
 const { ActionButton } = require("sdk/ui/button/action");
 const tabs = require("sdk/tabs");
-
-let currentLink = "";
-let paired = false;
+const notify = require("sdk/notifications");
+const MAX_URL_LENGTH = 30;
 
 let button = ToggleButton({
     id: "main-toggle",
     label: "Paired Link",
     icon: {
-      "16": "./firefox-16.png",
-      "32": "./firefox-32.png"
+      "16": "icons/receive16.png",
+      "32": "icons/receive32.png"
     },
     onChange: state => {
         if (paired && currentLink.length !== 0) {
@@ -26,15 +25,25 @@ let button = ToggleButton({
     }
 });
 
-ActionButton({
-    id: "test-send",
-    label: "send link",
-    icon: {
-      "16": "./firefox-16.png",
-      "32": "./firefox-32.png"
-    },
-    onClick: () => panel.port.emit("sendLink", tabs.activeTab.url)
-});
+let sendButton = (() => {
+    let btn;
+    return {
+        create: () => {
+            btn = ActionButton({
+                id: "test-send",
+                label: "send link",
+                icon: {
+                  "16": data.url("icons/send16.png"),
+                  "32": data.url("icons/send32.png")
+                },
+                onClick: () => panel.port.emit("sendLink", tabs.activeTab.url)
+            });
+        },
+        destroy: () => {
+            btn.destroy();
+        }
+    };
+})();
 
 let panel = require("sdk/panel").Panel({
     width: 300,
@@ -44,9 +53,12 @@ let panel = require("sdk/panel").Panel({
     onHide: () => button.state("window", { checked: false })
 });
 
-panel.port.on("newUrl",  url => currentLink = url);
-panel.port.on("paired", () => paired = true);
-panel.port.on("unpaired", () => {
-    paired = false;
-    currentLink = "";
-});
+panel.port.on("openUrl",  tabs.open);
+panel.port.on("notify",  url => notify({
+    title: "Paired Link",
+    text: "New link!\n" + url.length > MAX_URL_LENGTH ?
+        url.slice(0, MAX_URL_LENGTH) + "..." : url,
+    onClick: () => tabs.open(url)
+}));
+panel.port.on("paired", sendButton.create);
+panel.port.on("unpaired", sendButton.destroy);
