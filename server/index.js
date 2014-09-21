@@ -1,11 +1,14 @@
 var app = require('express')();
 var http = require('http').Server(app);
-var io = require('socket.io')(http
-
-var pairingError = "Error";
+var io = require('socket.io')(http);
 
 app.get('/', function(req, res){
-	res.send("");
+	res.send("<p>Hi</p>");
+});
+
+
+http.listen(3000, function(){
+	console.log('Listening on *:3000');
 });
 
 io.on("connection", function(socket){
@@ -14,7 +17,7 @@ io.on("connection", function(socket){
 
 	socket.on("pairCode::request", function(requestId){
 		if (pairingExists(socket.pairingCode)) {
-			sendClosePairingMessageToPairing(socket.id, socket.pairingCode);
+			sendClosePairingMessageToPartner(socket.id, socket.pairingCode);
 			closePairing(socket.pairingCode);
 		}
 		var newPairing = createNewPairing(socket.id);
@@ -29,9 +32,9 @@ io.on("connection", function(socket){
 
 	socket.on("shareLink::toPartner", function(sendUrl, requestId){
 		var partnerId = getPartnerId(socket.id, socket.pairingCode);
-		if(partnerId != -1){
+		if (partnerId != -1) {
 			var partnerSocket = getPartnerSocket(partnerId);
-			if(partnerSocket != null){
+			if (partnerSocket != null) {
 				partnerSocket.emit("shareLink::fromPartner", sendUrl);
 			} else {
 				console.log("Error sending url, found partnerId: " + partnerId + " but partner socket doesn't exist!")
@@ -40,6 +43,26 @@ io.on("connection", function(socket){
 			console.log("Error sending url, couldn't find partnerId with pairing: " + socket.pairingCode + " and sender id: " + socket.id);
 		}
 	});
+
+	socket.on("pairing::request", function(pairingCode, requestId){
+		if (pairingExists(pairingCode)) {
+			var successfulSocketAddition = addSocketIdToPairing(socket.id, pairingCode);
+			if (successfulSocketAddition) {
+				socket.emit("pairing::success", requestId);
+			} else {
+				console.log("Error adding user to pairing!");
+				socket.emit("pairing::failure", requestId);
+			}
+		} else {
+			console.log("Error adding user to pairing, pairing code: " + socket.pairingCode + " not found");
+			socket.emit("pairing::failure", requestId);
+		}
+	});
+
+	socket.on("disconnect", function(){
+		sendClosePairingMessageToPartner(socket.id, socket.pairingCode);
+		closePairing(socket.pairingCode);
+	});
 });
 
 //TODO: Finish pairingExists function
@@ -47,8 +70,8 @@ function pairingExists(pairing){
 	return false;
 }
 
-//TODO: Finish sendClosePairingMessageToPairing
-function sendClosePairingMessageToPairing(socketId, pairing){
+//TODO: Finish sendClosePairingMessageToPartner
+function sendClosePairingMessageToPartner(socketId, pairing){
 	var partnerId = getPartnerId(socketId, pairing);
 	sendClosePairingMessage(partnerId);
 }
@@ -90,6 +113,7 @@ function createNewPairing(socketId){
 
 function generateNewPairing(){
 	//TODO: Insert function body here
+	return 0;
 }
 
 function insertNewPairing (pairing) {
