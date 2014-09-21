@@ -38,12 +38,15 @@ ActionButton({
 
 let panel = require("sdk/panel").Panel({
     width: 300,
-    height: 160,
+    height: 120,
     contentURL: data.url("pairing.html"),
-    // contentScriptFile: [data.url("socket.io.client.js"), data.url("pairing.js")],
+    contentScriptFile: [data.url("socket.io.client.js"), data.url("pairing.js")],
     onHide: () => button.state("window", { checked: false })
 });
 
 panel.port.on("newUrl",  url => currentLink = url);
 panel.port.on("paired", () => paired = true);
-panel.port.on("unpaired", () => paired = true);
+panel.port.on("unpaired", () => {
+    paired = false;
+    currentLink = "";
+});
