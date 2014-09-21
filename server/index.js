@@ -1,6 +1,19 @@
 var app = require('express')();
 var http = require('http').Server(app);
 var io = require('socket.io')(http);
+var mongoose = require('mongoose');
+var Schema = mongoose.Schema;
+
+var pairingError = "Error";
+
+var PairingSchema = new Schema({
+	pairingCode: String,
+	members: Array
+});
+
+var PairingModel = mongoose.model('PairingSchema', PairingSchema);
+
+mongoose.connect("mongodb://localhost/");
 
 app.get('/', function(req, res){
 	res.send("<p>Hi</p>");
@@ -49,6 +62,15 @@ io.on("connection", function(socket){
 			var successfulSocketAddition = addSocketIdToPairing(socket.id, pairingCode);
 			if (successfulSocketAddition) {
 				socket.emit("pairing::success", requestId);
+				var partnerId = getPartnerId(socket.id, socket.pairingCode);
+				if (partnerId != -1) {
+					var partnerSocket = getPartnerSocket(partnerId);
+					if (partnerSocket != null) {
+						partnerSocket.emit("pairing::partnerJoined", sendUrl);
+					} else {
+						console.log("Error notifying original member that the new member was added");
+					}
+				}
 			} else {
 				console.log("Error adding user to pairing!");
 				socket.emit("pairing::failure", requestId);
@@ -65,35 +87,68 @@ io.on("connection", function(socket){
 	});
 });
 
-//TODO: Finish pairingExists function
 function pairingExists(pairing){
-	return false;
+	var pairingInfo = null;
+	PairingModel.findOne({'pairingCode': pairing}, function(err, tempPairingInfo){
+		if (err) {
+			console.log("Error when attempting to search up pairing: " + pairing);
+		} else {
+			pairingInfo = tempPairingInfo;
+		}
+	});
+	if (tempPairingInfo != null) {
+		return true;
+	} else {
+		return false;
+	}
 }
 
-//TODO: Finish sendClosePairingMessageToPartner
 function sendClosePairingMessageToPartner(socketId, pairing){
 	var partnerId = getPartnerId(socketId, pairing);
-	sendClosePairingMessage(partnerId);
+	var partnerSocket = getPartnerSocket(partnerId);
+	sendClosePairingMessage(partnerSocket);
 }
 
 function getPartnerId(socketId, pairing){
-	// TODO: insert body here
-	return 0;
+	partnerId = "";
+	PairingModel.findOne({'pairingCode': pairing}, function(err, pairingInfo){
+		if (err) {
+			console.log("Error when attempting to search up pairing: " + pairing);
+		} else {
+			for (var counter = 0; counter < pairingInfo.members; counter++){
+				if(pairingInfo.members[counter] != socketId){
+					partnerId = pairingInfo.members[counter];
+				}
+			}
+		}
+	});
+	return partnerId;
 }
 
 function getPartnerSocket (socketId) {
-	// TODO: Insert body here
-	return null;
+	var partnerSocket = null;
+	for (var counter = 1; counter < io.sockets.sockets.length; counter++) {
+		if(io.sockets.sockets[counter].id === socketId){
+			partnerSocket = io.sockets.sockets[counter];
+		}
+	}
+	return partnerSocket;
 }
 
-//TODO: Finish sendClosePairingMessage function
-function sendClosePairingMessage(id){
-
+function sendClosePairingMessage(socket){
+	socket.emit("pairing::close");
 }
 
-//TODO: Finish closePairing function
 function closePairing(pairing){
-
+	if (pairingExists(pairing)) {
+		PairingModel.findOneAndRemove({'pairingCode': pairing}, function(err){
+			if(err){
+				console.log("Error when attempting to delete pairing with code: " + pairing);
+			}
+		});
+	} else {
+		console.log("Someone was attempting to close a pairing that didn't exist, with pairing code: " + pairing);
+	}
 }
 
 function createNewPairing(socketId){
@@ -112,14 +167,49 @@ function createNewPairing(socketId){
 }
 
 function generateNewPairing(){
-	//TODO: Insert function body here
-	return 0;
+	var newPairing = 0;
+	for(var counter = 0; counter < 5; counter++){
+		newPairing += Math.round(Math.random*10);
+		newPairing = newPairing*10;
+	}
+	newPairing = newPairing/10;
+	if(pairingExists(newPairing)){
+		return generateNewPairing();
+	} else {
+		return newPairing;
+	}
 }
 
 function insertNewPairing (pairing) {
-	//TODO: Insert function body here
+	if (pairingExists(pairing)) {
+		console.log("There already exists a pairing with pairing code: " + pairing);
+		return false;
+	} else {
+		var successfulInsertion = false;
+		var pairingInfo = new PairingModel();
+		pairing.pairingCode = pairing;
+		pairing.members = [];
+		pairing.save( function(err) {
+			if(err){
+				console.log("Error creating a pairing: " + pairing + " with error: " + err);
+			} else {
+				successfulInsertion = true;
+			}
+		});
+		return successfulInsertion;
+	}
 }
 
 function addSocketIdToPairing (socketId, newPairing) {
-	//TODO: Insert function body here
+	PairingModel.findOne({'pairingCode': pairing}, function(err, tempPairingInfo){
+		if (err) {
+			console.log("Error when attempting to search up pairing: " + pairing);
+		} else {
+			pairingInfo = tempPairingInfo;
+			newPairingInfo = PairingModel();
+			newPairingInfo.pairingCode = tempPairingInfo.pairingCode;
+			newPairingInfo.members = tempPairingInfo.members.push(socketId);
+			PairingModel.findOneAndUpdate({'pairingCode': tempPairingInfo.pairingCode}, newPairingInfo);
+		}
+	});
 }
