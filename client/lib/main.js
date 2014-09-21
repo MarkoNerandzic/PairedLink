@@ -2,21 +2,18 @@ const { Reuqest } = require("sdk/request");
 const { data } = require("sdk/self");
 const { ToggleButton } = require("sdk/ui/button/toggle");
 const { ActionButton } = require("sdk/ui/button/action");
+const { notify } = require("sdk/notifications");
 const tabs = require("sdk/tabs");
-const notify = require("sdk/notifications");
 const MAX_URL_LENGTH = 30;
 
 let button = ToggleButton({
     id: "main-toggle",
     label: "Paired Link",
     icon: {
-      "16": "icons/receive16.png",
-      "32": "icons/receive32.png"
+      "16": data.url("icons/receive16.png"),
+      "32": data.url("icons/receive32.png")
     },
     onChange: state => {
-        if (paired && currentLink.length !== 0) {
-            return tabs.open(currentLink);
-        }
         if (state.checked) {
         panel.show({
             position: button
@@ -40,7 +37,9 @@ let sendButton = (() => {
             });
         },
         destroy: () => {
-            btn.destroy();
+            try {
+                btn.destroy();
+            } catch (_) {}
         }
     };
 })();

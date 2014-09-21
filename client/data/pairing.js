@@ -51,7 +51,7 @@ function resetInputs () {
     button.disabled = false;
 }
 
-const socket = io("http://10.20.94.222:3000");
+const socket = io("http://192.168.0.14:3000");
 
 socket.on("connect", () => {  // enable button upon obtaining id
     button.disabled = false;
@@ -91,6 +91,11 @@ socket.on("pairCode::response", (code, requestId) => {
 
 socket.on("pairing::partnerJoined", () => {
     resetInputs();
+    self.port.emit("paired");
+});
+
+socket.on("pairing::success", () => {
+    console.log("GOTIT");
     self.port.emit("paired");
 });
 

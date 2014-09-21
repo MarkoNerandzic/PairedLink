@@ -1,9 +1,9 @@
 {
-  "name": "client",
-  "title": "client",
-  "id": "jid1-yJLHaaMgdo1dug",
-  "description": "a basic add-on",
-  "author": "",
+  "name": "paired-link",
+  "title": "Paired link",
+  "id": "pairedLink@xrxr",
+  "description": "PairedLink Client",
+  "author": "XrXr",
   "license": "MPL 2.0",
   "version": "0.1"
 }
